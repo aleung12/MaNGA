@@ -22,8 +22,8 @@ Basic descriptions of files included in this repository:
 
 [2] ```mcmc_tacc.py```
  - implements a parallel-tempered Markov Chain Monte Carlo (MCMC) method (e.g., 
-   Vousden 2016, MNRAS, 455, 1919) to determine the most probable intrinsic model 
-   given the observed kinematic data for a MaNGA disk galaxy
+   Vousden et al. 2016, MNRAS, 455, 1919) to determine the most probable intrinsic 
+   model given the observed kinematic data for a MaNGA disk galaxy
  - to initiate a run from command line, execute, e.g.: 
  
    ```
