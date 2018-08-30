@@ -1,4 +1,4 @@
-### last major change (excludes testing): 07/05/2018
+### last major change (excludes testing): 08/28/2018
 ### generic initial model (no prior fit)
 ### fitting PA from the beginning
 ### fitting m=2 mode (bar mode) after 20 swap iterations
@@ -9,6 +9,7 @@
 ### (03/02/2018) flux-weighted convolution of kinematics
 ### (03/09/2018) properly deal with flux gradient at mask boundary
 ### (03/15/2018) corrected flux assignment for gas (previously switched)
+### (08/28/2018) fixed bug in theta(phi) deprojection (corresponding changes in simdisk.py, npp.py)
 
 
 from astropy.io import fits
@@ -184,22 +185,26 @@ def deproject(model, pa_deg, inc_deg):
          ### radial coordinate r in image plane
          r = np.sqrt( X**2 +Y**2 )
          
-         ### azimuthal angle phi in image plane
-         if (X == 0) and (Y == 0):   phi = pos_angle
-         elif (X <= 0) and (Y >= 0): phi = np.arctan2(Y,X) -0.5*np.pi
-         else:                       phi = np.arctan2(Y,X) +1.5*np.pi
-         
-         ### azimuthal angle theta in galaxy plane
-         if (X == 0) and (Y == 0):
-            theta = 0.5 * np.pi
-         elif (pos_angle <= phi <= pos_angle+0.5*np.pi):
-            theta = np.arctan( np.tan(phi-pos_angle) *np.cos(inclination) )
-         elif ((pos_angle <= 0.5*np.pi) and (pos_angle+0.5*np.pi < phi <= pos_angle+1.5*np.pi)) \
-            or ((pos_angle > 0.5*np.pi) and ((pos_angle+0.5*np.pi < phi < 2*np.pi) or (0 <= phi <= pos_angle-0.5*np.pi))):
-            theta = np.arctan( np.tan(phi-pos_angle) *np.cos(inclination) ) + np.pi
+         ### azimuthal angle in image plane
+         if (X == 0) and (Y == 0):   
+            phi = pos_angle +0.5*np.pi
          else:
-            theta = np.arctan( np.tan(phi-pos_angle) *np.cos(inclination) ) + 2*np.pi
-
+            phi = np.arctan2(Y,X)
+            if (X <= 0) and (Y >= 0): phi -= 0.5*np.pi
+            else:                     phi += 1.5*np.pi
+         
+         ### azimuthal angle in galaxy disk plane
+         theta = np.arctan( np.tan(phi-pos_angle+0.5*np.pi) *np.cos(inclination) )
+         if phi-pos_angle == 0:
+            theta -= 0.5*np.pi
+         elif 0 < pos_angle <= np.pi:
+            if 0 < phi-pos_angle <= np.pi:   theta += 0.5*np.pi
+            else:                            theta += 1.5*np.pi
+         elif np.pi < pos_angle < 2*np.pi:
+            if pos_angle <= phi <= 2*np.pi:  theta += 0.5*np.pi
+            elif 0 <= phi < pos_angle-np.pi: theta += 0.5*np.pi
+            else:                            theta += 1.5*np.pi
+         
          r_ip[y,x]     = r
          phi_ip[y,x]   = phi
          theta_gp[y,x] = theta
@@ -612,16 +617,17 @@ def vary_inclination(model, sigma_inc):
          ### azimuthal angle phi in image plane
          phi = phi_ip[y,x]
 
-         ### azimuthal angle theta in galaxy plane
-         if (X == 0) and (Y == 0):
-            theta = 0.5 * np.pi
-         elif (pos_angle <= phi <= pos_angle+0.5*np.pi):
-            theta = np.arctan( np.tan(phi-pos_angle) *cos_i )
-         elif ((pos_angle <= 0.5*np.pi) and (pos_angle+0.5*np.pi < phi <= pos_angle+1.5*np.pi)) \
-            or ((pos_angle > 0.5*np.pi) and ((pos_angle+0.5*np.pi < phi < 2*np.pi) or (0 <= phi <= pos_angle-0.5*np.pi))):
-            theta = np.arctan( np.tan(phi-pos_angle) *cos_i ) + np.pi
-         else:
-            theta = np.arctan( np.tan(phi-pos_angle) *cos_i ) + 2*np.pi
+         ### azimuthal angle in galaxy disk plane
+         theta = np.arctan( np.tan(phi-pos_angle+0.5*np.pi) *cos_i )
+         if phi-pos_angle == 0:
+            theta -= 0.5*np.pi
+         elif 0 < pos_angle <= np.pi:
+            if 0 < phi-pos_angle <= np.pi:   theta += 0.5*np.pi
+            else:                            theta += 1.5*np.pi
+         elif np.pi < pos_angle < 2*np.pi:
+            if pos_angle <= phi <= 2*np.pi:  theta += 0.5*np.pi
+            elif 0 <= phi < pos_angle-np.pi: theta += 0.5*np.pi
+            else:                            theta += 1.5*np.pi
 
          proposed_theta_gp[y,x] = theta
 
@@ -686,8 +692,7 @@ def vary_PA(model, sigma_PA):
 
    ### gaussian proposal distribution
    proposed_PA = np.random.normal(previous_PA, sigma_PA)
-   if   proposed_PA >  1.5*np.pi: proposed_PA -= 2*np.pi
-   elif proposed_PA < -0.5*np.pi: proposed_PA += 2*np.pi
+   proposed_PA %= (2*np.pi)
 
    if 0 <= proposed_PA < 1.5*np.pi: alpha = proposed_PA + 0.5*np.pi
    else:                            alpha = proposed_PA % (0.5*np.pi)
@@ -715,19 +720,19 @@ def vary_PA(model, sigma_PA):
          X = x -model_cen[1]
          
          ### azimuthal angle phi in image plane
-         if (X == 0) and (Y == 0): phi = phi_ip[y,x] = proposed_PA
-         else:                     phi = phi_ip[y,x]
-         
-         ### azimuthal angle theta in galaxy plane
-         if (X == 0) and (Y == 0):
-            theta = 0.5 * np.pi
-         elif (proposed_PA <= phi <= proposed_PA+0.5*np.pi):
-            theta = np.arctan( np.tan(phi-proposed_PA) *cos_i )
-         elif ((proposed_PA <= 0.5*np.pi) and (proposed_PA+0.5*np.pi < phi <= proposed_PA+1.5*np.pi)) \
-            or ((proposed_PA > 0.5*np.pi) and ((proposed_PA+0.5*np.pi < phi < 2*np.pi) or (0 <= phi <= proposed_PA-0.5*np.pi))):
-            theta = np.arctan( np.tan(phi-proposed_PA) *cos_i ) + np.pi
-         else:
-            theta = np.arctan( np.tan(phi-proposed_PA) *cos_i ) + 2*np.pi
+         phi = phi_ip[y,x]
+
+         ### azimuthal angle in galaxy disk plane
+         theta = np.arctan( np.tan(phi-proposed_PA+0.5*np.pi) *cos_i )
+         if phi-proposed_PA == 0:
+            theta -= 0.5*np.pi
+         elif 0 < proposed_PA <= np.pi:
+            if 0 < phi-proposed_PA <= np.pi:   theta += 0.5*np.pi
+            else:                              theta += 1.5*np.pi
+         elif np.pi < proposed_PA < 2*np.pi:
+            if proposed_PA <= phi <= 2*np.pi:  theta += 0.5*np.pi
+            elif 0 <= phi < proposed_PA-np.pi: theta += 0.5*np.pi
+            else:                              theta += 1.5*np.pi
 
          proposed_theta_gp[y,x] = theta
 
@@ -988,9 +993,9 @@ def ptRuns(plateid, ifudesign, component, max_iterations, last_iteration=None, v
                   v_a.append(vel_data[y,x])
                elif 2*np.pi/3 < theta_gp[y,x] < 4*np.pi/3:
                   v_b.append(vel_data[y,x])
-      if np.average(v_b) > np.average(v_a):
+      if np.average(v_a) < np.average(v_b):
          pa_deg += 180
-         if 270 < pa_deg < 360: pa_deg -= 360
+         pa_deg %= 360
          intr_vel_model = initModel(plateid, ifudesign, pa_deg, inc_deg, model_dim, 'vel', V_sys, V_max, h_rot)
          r_ip, R_gp, phi_ip, theta_gp, ellipse, bin_assign = deproject(intr_vel_model, pa_deg, inc_deg)
       
@@ -1116,7 +1121,6 @@ def ptRuns(plateid, ifudesign, component, max_iterations, last_iteration=None, v
       ### (09/22/2017) replaced starting value of phi_b=0, which is a degenerate solution, at the time we implemented delayed start of m=2 mode fitting (by 5 iterations, or ~125,000 proposed transitions)
       ### (04/06/2018) replaced 45 degrees with 22.5 degrees (see results for 8484-12703 from TACC_03-30-18)
       initial_phi_bar = np.pi/8
-      
       
       initial_inc = inclination
       initial_PA  = pos_angle
@@ -1825,6 +1829,7 @@ if __name__ == '__main__':
    
    if   num_chains == 2:  temp_ladder = np.logspace(0,0.2,num_chains).tolist()
    elif num_chains == 4:  temp_ladder = np.logspace(0,0.3,num_chains).tolist()
+   elif num_chains == 5:  temp_ladder = np.logspace(0,0.4,num_chains).tolist()
    elif num_chains == 10: temp_ladder = np.logspace(0,0.9,num_chains).tolist()
    elif num_chains == 20: temp_ladder = np.logspace(0,0.95,num_chains).tolist()
    else: print('   no temperature ladder specified   ')

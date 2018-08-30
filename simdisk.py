@@ -1,4 +1,4 @@
-### last changed: 08/21/2017
+### last changed: 08/28/2018
 
 from astropy.io import fits
 import numpy as np
@@ -30,21 +30,26 @@ def mkdisk(pos_angle_deg,inclination_deg,ext,dim,V_sys=0.,V_max=220.,h_rot=10.,s
       for x in range(np.shape(image)[1]):
 
          r = np.sqrt( (x-cen_x)**2 +(y-cen_y)**2 )
+
          ### azimuthal angle in image plane
-         if (x == cen_x) and (y == cen_y):   phi = pos_angle
-         elif (x <= cen_x) and (y >= cen_y): phi = np.arctan2(y-cen_y,x-cen_x) -0.5*np.pi
-         else:                               phi = np.arctan2(y-cen_y,x-cen_x) +1.5*np.pi
-         
-         ### azimuthal angle theta in galaxy plane
-         if (x == cen_x) and (y == cen_y):
-            theta = 0.5 * np.pi
-         elif (pos_angle <= phi <= pos_angle+0.5*np.pi):
-            theta = np.arctan( np.tan(phi-pos_angle) *np.cos(inclination) )
-         elif ((pos_angle <= 0.5*np.pi) and (pos_angle+0.5*np.pi < phi <= pos_angle+1.5*np.pi)) \
-            or ((pos_angle > 0.5*np.pi) and ((pos_angle+0.5*np.pi < phi < 2*np.pi) or (0 <= phi <= pos_angle-0.5*np.pi))):
-            theta = np.arctan( np.tan(phi-pos_angle) *np.cos(inclination) ) + np.pi
+         if (x == cen_x) and (y == cen_y): 
+            phi = pos_angle +0.5*np.pi
          else:
-            theta = np.arctan( np.tan(phi-pos_angle) *np.cos(inclination) ) + 2*np.pi
+            phi = np.arctan2(y-cen_y,x-cen_x)
+            if (x <= cen_x) and (y >= cen_y): phi -= 0.5*np.pi
+            else:                             phi += 1.5*np.pi
+
+         ### azimuthal angle in galaxy disk plane
+         theta = np.arctan( np.tan(phi-pos_angle+0.5*np.pi) *np.cos(inclination) )
+         if phi-pos_angle == 0:
+            theta -= 0.5*np.pi
+         elif 0 < pos_angle <= np.pi:
+            if 0 < phi-pos_angle <= np.pi:   theta += 0.5*np.pi
+            else:                            theta += 1.5*np.pi
+         elif np.pi < pos_angle < 2*np.pi:
+            if pos_angle <= phi <= 2*np.pi:  theta += 0.5*np.pi
+            elif 0 <= phi < pos_angle-np.pi: theta += 0.5*np.pi
+            else:                            theta += 1.5*np.pi
 
          r_ip[y,x] = r
          phi_ip[y,x] = phi
@@ -83,14 +88,16 @@ def mkdisk(pos_angle_deg,inclination_deg,ext,dim,V_sys=0.,V_max=220.,h_rot=10.,s
 
 if __name__ == '__main__':
 
-   PA_deg  = [45, 135] #[0, 5, 15, 30, 45, 60, 75, 90, 120, 150, 175, 180]
-   inc_deg = [-135, -45, 45, 135]   #1, 2, 3, 4, 5, 15, 30, 45, 60, 75, 85, 95, 105, 120, 135, 150, 165, 175, 180]
+   #PA_deg  = [45, 135, 225, 315] #[0, 5, 15, 30, 45, 60, 75, 90, 120, 150, 175, 180]
+   #PA_deg = [-45, -135]
+   PA_deg = 10*(np.array(range(35))+1)
+   inc_deg = [60] #s[30, 45, 60, 75]   #1, 2, 3, 4, 5, 15, 30, 45, 60, 75, 85, 95, 105, 120, 135, 150, 165, 175, 180]
    exts = ['vel'] #,'disp']
 
    for PA in PA_deg:
       for inc in inc_deg:
          for ext in exts:
-            mkdisk(PA,inc,ext)
+            mkdisk(PA,inc,ext,dim=72)
             print('  ### PA (degrees)          = '+str(PA))
             print('  ### inclination (degrees) = '+str(inc))
             print('  ### time now:    '+time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime()))
