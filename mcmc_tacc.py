@@ -1,4 +1,4 @@
-### last major change (excludes testing): 08/28/2018
+### last major change (excludes testing): 09/26/2018
 ### generic initial model (no prior fit)
 ### fitting PA from the beginning
 ### fitting m=2 mode (bar mode) after 20 swap iterations
@@ -10,6 +10,11 @@
 ### (03/09/2018) properly deal with flux gradient at mask boundary
 ### (03/15/2018) corrected flux assignment for gas (previously switched)
 ### (08/28/2018) fixed bug in theta(phi) deprojection (corresponding changes in simdisk.py, npp.py)
+### (09/04/2018) fitting everything from the beginning
+### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+### (09/08/2018) all chains to sample untempered distributions beginning at iteration 21
+### (09/11/2018) fitting (V_t, V_2t, V_2r) separately; all chains untempered beginning at iteration 41
+### (09/12/2018) undid the above, but sample V(R) three times as frequently since it contains three parameters
 
 
 from astropy.io import fits
@@ -406,6 +411,114 @@ def vary_V_t(model, target_bin, sigma_V_t):
                                          - V_2t * cos_2thetaBar[y,x] * cos_theta[y,x] \
                                          - V_2r * sin_2thetaBar[y,x] * sin_theta[y,x] \
                                          )
+               
+      model_out = [ vel_model +V_sys, model[0][1] ]
+      return model_out, proposed_value
+
+   else: return model[0], previous_value
+
+
+def vary_V_2t(model, target_bin, sigma_V_2t):
+
+   model_dim = np.shape(model[0][0])
+   model_cen = [model_dim[0]//2, model_dim[1]//2]
+   
+   disk_param = model[6]
+   R_gp, theta_gp, bin_assign = disk_param[0], disk_param[1], disk_param[3]
+   
+   V_sys = model[2]
+   phi_bar = model[3]
+   inclination = model[4]
+   
+   vel_model  = model[0][0] -V_sys
+   
+   previous_value = model[1][target_bin][2]
+   proposal_sigma = sigma_V_2t
+   
+   if not target_bin == 0:
+      proposed_value = np.random.normal(previous_value, proposal_sigma)
+
+      if target_bin == num_bins-1:                                                  ### right edge
+         interp_range       = [bin_centers[target_bin-1], bin_centers[target_bin]]
+         interp_V_2t_values = [model[1][target_bin-1][2], proposed_value]
+
+      else:
+         interp_range       = [bin_centers[target_bin-1], bin_centers[target_bin], bin_centers[target_bin+1]]
+         interp_V_2t_values = [model[1][target_bin-1][2], proposed_value,          model[1][target_bin+1][2]]
+         
+      sin_i = np.sin(inclination)
+      theta_bar = theta_gp -phi_bar
+      cos_2thetaBar = np.cos(2*theta_bar)
+      sin_2thetaBar = np.sin(2*theta_bar)
+      cos_theta = np.cos(theta_gp)
+      sin_theta = np.sin(theta_gp)
+      
+      V_t, V_2r = model[1][target_bin][0], model[1][target_bin][3]
+
+      for y in range(model_dim[0]):
+         for x in range(model_dim[1]):
+         
+            R = R_gp[y,x]
+            if interp_range[0] <= R <= interp_range[len(interp_range)-1]:     ### (08/21/2017)
+               vel_model[y,x] = sin_i * \
+                   ( V_t * cos_theta[y,x] \
+                   - np.interp(R, interp_range, interp_V_2t_values) * cos_2thetaBar[y,x] * cos_theta[y,x] \
+                   - V_2r * sin_2thetaBar[y,x] * sin_theta[y,x] \
+                   )
+               
+      model_out = [ vel_model +V_sys, model[0][1] ]
+      return model_out, proposed_value
+
+   else: return model[0], previous_value
+
+
+def vary_V_2r(model, target_bin, sigma_V_2r):
+
+   model_dim = np.shape(model[0][0])
+   model_cen = [model_dim[0]//2, model_dim[1]//2]
+   
+   disk_param = model[6]
+   R_gp, theta_gp, bin_assign = disk_param[0], disk_param[1], disk_param[3]
+   
+   V_sys = model[2]
+   phi_bar = model[3]
+   inclination = model[4]
+   
+   vel_model  = model[0][0] -V_sys
+   
+   previous_value = model[1][target_bin][3]
+   proposal_sigma = sigma_V_2r
+   
+   if not target_bin == 0:
+      proposed_value = np.random.normal(previous_value, proposal_sigma)
+
+      if target_bin == num_bins-1:                                                  ### right edge
+         interp_range       = [bin_centers[target_bin-1], bin_centers[target_bin]]
+         interp_V_2r_values = [model[1][target_bin-1][3], proposed_value]
+
+      else:
+         interp_range       = [bin_centers[target_bin-1], bin_centers[target_bin], bin_centers[target_bin+1]]
+         interp_V_2r_values = [model[1][target_bin-1][3], proposed_value,          model[1][target_bin+1][3]]
+         
+      sin_i = np.sin(inclination)
+      theta_bar = theta_gp -phi_bar
+      cos_2thetaBar = np.cos(2*theta_bar)
+      sin_2thetaBar = np.sin(2*theta_bar)
+      cos_theta = np.cos(theta_gp)
+      sin_theta = np.sin(theta_gp)
+      
+      V_t, V_2t = model[1][target_bin][0], model[1][target_bin][2]
+
+      for y in range(model_dim[0]):
+         for x in range(model_dim[1]):
+         
+            R = R_gp[y,x]
+            if interp_range[0] <= R <= interp_range[len(interp_range)-1]:     ### (08/21/2017)
+               vel_model[y,x] = sin_i * \
+                   ( V_t * cos_theta[y,x] \
+                   - V_2t * cos_2thetaBar[y,x] * cos_theta[y,x] \
+                   - np.interp(R, interp_range, interp_V_2r_values) * sin_2thetaBar[y,x] * sin_theta[y,x] \
+                   )
                
       model_out = [ vel_model +V_sys, model[0][1] ]
       return model_out, proposed_value
@@ -950,6 +1063,12 @@ def ptWrapper(plateid, ifudesign, component, temp_ladder, num_chains, burn_in, d
       print('')
       last_models.append(results[wnum][1])
 
+   ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+   ### (09/08/2018) all chains to sample untempered distributions beginning at iteration 21
+   ### (09/11/2018) all chains to sample untempered distributions beginning at iteration 41
+   if this_iter+1 > last_swap_iteration: swap = False
+   else: swap = True
+
    if swap:       ### (08/04/2017) go back to PT
       new_models = proposeSwaps(plateid, ifudesign, component, data, ivar, num_chains, temp_ladder, last_models, psf, flux, conv_norm, this_iter)
       return new_models
@@ -958,7 +1077,7 @@ def ptWrapper(plateid, ifudesign, component, temp_ladder, num_chains, burn_in, d
       return last_models      ### (08/03/2017) test doing away with different chain temperatures, use parallel processes to generate more cold-chain samples instead
 
 
-def ptRuns(plateid, ifudesign, component, max_iterations, last_iteration=None, verbose=False, fft=True):
+def ptRuns(plateid, ifudesign, component, temp_ladder, max_iterations, last_iteration=None, verbose=False, fft=True):
    
    pa_deg, inc_deg = getParams(plateid, ifudesign)
    
@@ -1007,7 +1126,7 @@ def ptRuns(plateid, ifudesign, component, max_iterations, last_iteration=None, v
       values_at_bin_center = []
       for b in range(num_bins):
          values_at_bin_center.append( [ round(V_max *np.tanh(bin_centers[b]/h_rot),3), \
-                                       round(sigma_cen *np.exp(-(bin_centers[b]/a)**2),3), \
+                                       round(sigma_cen *np.exp(-(bin_centers[b]/a)),3), \
                                        round(0,3), \
                                        round(0,3) \
                                        ] )
@@ -1028,12 +1147,17 @@ def ptRuns(plateid, ifudesign, component, max_iterations, last_iteration=None, v
 
       for walker in range(num_chains):
          logT = np.log10(temp_ladder[walker])
-         modelfile = fits.open(testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/'%(walker)+'manga_'+plateid+'_'+ifudesign+'_logT=%.2f'%(logT)+'_last_intr_vel_model.fits')
+         if walker == 0 or last_iteration <= last_swap_iteration:
+            modelfile = fits.open(testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/'%(walker)+'manga_'+plateid+'_'+ifudesign+'_logT=%.2f'%(logT)+'_last_intr_vel_model.fits')
+         else: 
+            modelfile = fits.open(testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/'%(walker)+'manga_'+plateid+'_'+ifudesign+'_logT=0.00_last_intr_vel_model.fits')
          intr_vel_model[walker] = modelfile[0].data
          modelfile.close()
 
          if walker == 0:
             tracker = open(testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=%.2f_it%04d.dat'%(logT,last_iteration),'r')
+         elif last_iteration > last_swap_iteration:
+            tracker = open(testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=0.00_it%04d.dat'%(last_iteration),'r')
          else:
             tracker = open(testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=%.2f_last_iteration.dat~'%(logT),'r')
 
@@ -1120,7 +1244,8 @@ def ptRuns(plateid, ifudesign, component, max_iterations, last_iteration=None, v
    if last_iteration is None:
       ### (09/22/2017) replaced starting value of phi_b=0, which is a degenerate solution, at the time we implemented delayed start of m=2 mode fitting (by 5 iterations, or ~125,000 proposed transitions)
       ### (04/06/2018) replaced 45 degrees with 22.5 degrees (see results for 8484-12703 from TACC_03-30-18)
-      initial_phi_bar = np.pi/8
+      ### (09/12/2018) replaced 45 degrees with 0 degrees
+      initial_phi_bar = 0.   #np.pi/8
       
       initial_inc = inclination
       initial_PA  = pos_angle
@@ -1159,6 +1284,16 @@ def ptRuns(plateid, ifudesign, component, max_iterations, last_iteration=None, v
       burn_in = True   ### (12/16/2015) always require burn-in after swaps
                        ### (09/26/2017) long since deprecated, moved to post-processing
       
+      ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+      ### (09/08/2018) all chains to sample untempered distributions beginning at iteration 21
+      ### (09/11/2018) all chains to sample untempered distributions beginning at iteration 41
+      if this_iter+1 > last_swap_iteration: temp_ladder = [1.] * len(temp_ladder)
+      
+      ### (09/12/2018) at the iteration when proposed swaps are switched off, start all chains at the best chain's position
+      if this_iter == last_swap_iteration:
+         for i in range(1,num_chains):
+            models[i] = models[0]
+
       models = ptWrapper(plateid, ifudesign, component, temp_ladder, num_chains, burn_in, data, ivar, models, psf, flux, conv_norm, this_iter, verbose)
       
       iter_file = open(testdir+plateid+'-'+ifudesign+'/'+component+'/.manga_'+plateid+'_'+ifudesign+'_'+component+'_last_iter', 'w')
@@ -1244,10 +1379,14 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
    logT = np.log10(T)
    if this_iter > 0:
       os.system('cp -p '+testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=%.2f_last_iteration.dat'%(logT)+' '+testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=%.2f_last_iteration.dat~'%(logT))
-   if walker == 0:
+   
+   ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+   ### (09/11/2018) all chains to sample untempered distributions beginning at iteration 41
+   if T == 1:  #walker == 0:
       walker_tracker = open(testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=%.2f_it%04d.dat'%(logT,this_iter+1),'w')
    else:
       walker_tracker = open(testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=%.2f_last_iteration.dat'%(logT),'w')
+   
    walker_tracker.write('#  '+time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())+'\n')
    walker_tracker.write('#\n')
    walker_tracker.write('#    MaNGA plate ID:   '+plateid+' \n')
@@ -1281,46 +1420,46 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
    walker_tracker.write('#\n')
 
    random_seed  = np.random.uniform(0, 1, max_int)
-   random_order = np.random.randint(0, 2*num_bins+4, max_int)
+   
+   ### (09/11/2018) fitting (V_t, V_2t, V_2r) separately
+   random_order = np.random.randint(0, 4*num_bins+4, max_int)
 
    jump_count = 0
    counter = 0
-   while (min(jump_count_by_param) < swap_int) and (counter < max_int):
+   #while (min(jump_count_by_param) < swap_int) and (counter < max_int):
+   while counter < max_int:
    
       selected_bin = random_order[counter]
       
-      if selected_bin == 2*num_bins:   ### fitting V_sys
+      if selected_bin == 4*num_bins:        ### fitting V_sys
          new_model, proposed_value = vary_V_sys(current_model, sigma_Vsys)
       
-      elif selected_bin == 2*num_bins+1:    ### fitting phi_bar
-         if this_iter > 19:
-            new_model, proposed_value = vary_phi_bar(current_model, sigma_phiBar)
-         else:       ### do nothing
-            new_model, proposed_value = [current_model[0][0], current_model[0][1]], current_model[3]
-      
-      elif selected_bin == 2*num_bins+2:    ### fitting inclination
-         if this_iter > 39:   ### (03/20/2018)   99:
-            new_model, proposed_value, proposed_param_updates = vary_inclination(current_model, sigma_inc)
-         else:       ### do nothing
-            new_model, proposed_value, proposed_param_updates = \
-               [current_model[0][0], current_model[0][1]], current_model[4], [current_model[6][0], current_model[6][1], current_model[6][3]]
-
-      elif selected_bin == 2*num_bins+3:   ### fitting disk position angle
+      elif selected_bin == 4*num_bins+1:    ### fitting phi_bar
+         new_model, proposed_value = vary_phi_bar(current_model, sigma_phiBar)
+         
+      elif selected_bin == 4*num_bins+2:    ### fitting inclination
+         new_model, proposed_value, proposed_param_updates = vary_inclination(current_model, sigma_inc)
+         
+      elif selected_bin == 4*num_bins+3:   ### fitting disk position angle
          new_model, proposed_value, proposed_param_updates = vary_PA(current_model, sigma_PA)
 
       else:
-         radial_bin = selected_bin /2
-         if selected_bin %2 == 1:    ### fitting sigma_V(R)
+         radial_bin = selected_bin /4
+         #if selected_bin %4 == 0:
+         #   new_model, proposed_value = vary_V_t(current_model, radial_bin, sigma_V_t)
+
+         if selected_bin %4 == 1:    ### fitting sigma_V(R)
             new_model, proposed_value = vary_sigma_V(current_model, radial_bin, sigma_disp)
          
-         else:    ### fitting (V_t(R), V_2t(R), V_2r(R) as a tuple
-            if this_iter > 19:
-               new_model, proposed_V_t, proposed_V_2t, proposed_V_2r = vary_V(current_model, radial_bin, sigma_V_t, sigma_V_2t, sigma_V_2r)
-            else:
-               new_model, proposed_V_t = vary_V_t(current_model, radial_bin, sigma_V_t)
-               proposed_V_2t, proposed_V_2r = current_model[1][radial_bin][2:4]
-               
+         else:
+            new_model, proposed_V_t, proposed_V_2t, proposed_V_2r = vary_V(current_model, radial_bin, sigma_V_t, sigma_V_2t, sigma_V_2r)
 
+         #elif selected_bin %4 == 2:
+         #   new_model, proposed_value = vary_V_2t(current_model, radial_bin, sigma_V_2t)
+
+         #elif selected_bin %4 == 3:
+         #   new_model, proposed_value = vary_V_2r(current_model, radial_bin, sigma_V_2r)
+               
       vel_avg = convolveFFT(new_model[0], psf/np.sum(psf), None)
       if component == 'stellar':
          new_conv_vel_model  = convolveFFT(new_model[0]*flux.data, psf, data[0].mask) * conv_norm
@@ -1335,15 +1474,19 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
       candidate_chi2 = (candidate_vel_chi2, candidate_disp_chi2)
 
       ### (09/18/2017) add smoothing term to chi-squared
-      if selected_bin < 2*num_bins:
+      if selected_bin < 4*num_bins:
          new_radial_param = np.copy(current_model[1])
-         if selected_bin%2 == 1:
-            new_radial_param[selected_bin/2][1] = proposed_value
+         
+         ### (09/11/2018) fitting (V_t, V_2t, V_2r)(r) separately
+         #new_radial_param[selected_bin/4][selected_bin%4] = proposed_value
+         
          ### (09/19/2017) fitting (V_t, V_2t, V_2r)(r) as tuple, but keep track of them separately
+         if selected_bin%4 == 1:
+            new_radial_param[selected_bin/4][1] = proposed_value
          else:
-            new_radial_param[selected_bin/2][0] = proposed_V_t
-            new_radial_param[selected_bin/2][2] = proposed_V_2t
-            new_radial_param[selected_bin/2][3] = proposed_V_2r
+            new_radial_param[selected_bin/4][0] = proposed_V_t
+            new_radial_param[selected_bin/4][2] = proposed_V_2t
+            new_radial_param[selected_bin/4][3] = proposed_V_2r
          candidate_smooth = smoothing(bin_centers, new_radial_param, component)
 
       else: candidate_smooth = current_smooth
@@ -1353,59 +1496,65 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
 
       if (sum(candidate_chi2) +candidate_smoothing_term) < (sum(current_chi2) +current_smoothing_term):
 
-         if selected_bin >= 2*num_bins:
-            accepted[num_bins+selected_bin%(2*num_bins)].append(proposed_value)
-            jump_count_by_param[num_bins+selected_bin%(2*num_bins)] += 1
+         ### (09/11/2018) fitting (V_t, V_2t, V_2r)(r) separately
+         if selected_bin >= 4*num_bins:
+            accepted[num_bins+selected_bin%(4*num_bins)].append(proposed_value)
+            jump_count_by_param[num_bins+selected_bin%(4*num_bins)] += 1
 
             ### (09/15/2017) keep track of both kinds of accepts
-            accepted_better[num_bins+selected_bin%(2*num_bins)].append(proposed_value)
+            accepted_better[num_bins+selected_bin%(4*num_bins)].append(proposed_value)
 
          if verbose: print('  ### %.2f s since beginning, proposed jump accepted, previous reduced chi2 = %.5f, candidate reduced chi2 = %.5f'%(time.time()-t0, current_chi2/(dim-num_bins), candidate_chi2/(dim-num_bins)))
 
          current_model[0] = new_model
          convolved_model = new_conv_model
 
-         if selected_bin == 2*num_bins:                 ### if fitting V_sys this iteration
+         if selected_bin == 4*num_bins:                 ### if fitting V_sys this iteration
             current_model[2] = current_model[6][6] = proposed_value
-         elif selected_bin == 2*num_bins+1:             ### if fitting phi_bar this iteration
+         elif selected_bin == 4*num_bins+1:             ### if fitting phi_bar this iteration
             current_model[3] = proposed_value
-         elif selected_bin == 2*num_bins+2:             ### if fitting inclination this iteration
+         elif selected_bin == 4*num_bins+2:             ### if fitting inclination this iteration
             current_model[4] = current_model[6][5] = proposed_value
             current_model[6][0] = proposed_param_updates[0]   ### update R_gp
             current_model[6][1] = proposed_param_updates[1]   ### update theta_gp
             current_model[6][3] = proposed_param_updates[2]   ### update bin_assign
-         elif selected_bin == 2*num_bins+3:             ### if fitting disk position angle this iteration
+         elif selected_bin == 4*num_bins+3:             ### if fitting disk position angle this iteration
             current_model[5] = current_model[6][4] = proposed_value
             current_model[6][0] = proposed_param_updates[0]   ### update R_gp
             current_model[6][1] = proposed_param_updates[1]   ### update theta_gp
             current_model[6][3] = proposed_param_updates[2]   ### update bin_assign
          else:                                        ### if fitting parameter with R-dependence this iteration
-            if selected_bin%2 == 1:
-               current_model[1][selected_bin/2][1] = proposed_value
-               accepted[selected_bin/2][1].append(proposed_value)
-               jump_count_by_param[selected_bin/2][1] += 1
+            ### (09/11/2018) fitting (V_t, V_2t, V_2r) separately
+            #current_model[1][selected_bin/4][selected_bin%4] = proposed_value
+            #accepted[selected_bin/4][selected_bin%4].append(proposed_value)
+            #jump_count_by_param[selected_bin/4][selected_bin%4] += 1
+            #accepted_better[selected_bin/4][selected_bin%4].append(proposed_value)
+
+            if selected_bin%4 == 1:
+               current_model[1][selected_bin/4][1] = proposed_value
+               accepted[selected_bin/4][1].append(proposed_value)
+               jump_count_by_param[selected_bin/4][1] += 1
 
                ### (09/15/2017) keep track of both kinds of accepts
-               accepted_better[selected_bin/2][1].append(proposed_value)
+               accepted_better[selected_bin/4][1].append(proposed_value)
            
             ### (09/19/2017) fitting (V_t, V_2t, V_2r)(r) as tuple, but keep track of them separately
             else:
-               current_model[1][selected_bin/2][0] = proposed_V_t
-               current_model[1][selected_bin/2][2] = proposed_V_2t
-               current_model[1][selected_bin/2][3] = proposed_V_2r
-               accepted[selected_bin/2][0].append(proposed_V_t)
-               accepted[selected_bin/2][2].append(proposed_V_2t)
-               accepted[selected_bin/2][3].append(proposed_V_2r)
-               jump_count_by_param[selected_bin/2][0] += 1
-               jump_count_by_param[selected_bin/2][2] += 1
-               jump_count_by_param[selected_bin/2][3] += 1
+               current_model[1][selected_bin/4][0] = proposed_V_t
+               current_model[1][selected_bin/4][2] = proposed_V_2t
+               current_model[1][selected_bin/4][3] = proposed_V_2r
+               accepted[selected_bin/4][0].append(proposed_V_t)
+               accepted[selected_bin/4][2].append(proposed_V_2t)
+               accepted[selected_bin/4][3].append(proposed_V_2r)
+               jump_count_by_param[selected_bin/4][0] += 1
+               jump_count_by_param[selected_bin/4][2] += 1
+               jump_count_by_param[selected_bin/4][3] += 1
                
                ### (09/15/2017) keep track of both kinds of accepts
-               accepted_better[selected_bin/2][0].append(proposed_V_t)
-               accepted_better[selected_bin/2][2].append(proposed_V_2t)
-               accepted_better[selected_bin/2][3].append(proposed_V_2r)
+               accepted_better[selected_bin/4][0].append(proposed_V_t)
+               accepted_better[selected_bin/4][2].append(proposed_V_2t)
+               accepted_better[selected_bin/4][3].append(proposed_V_2r)
                
-
          change_in_chi2 = (candidate_chi2[0]-current_chi2[0], candidate_chi2[1]-current_chi2[1])
          current_chi2 = candidate_chi2
          current_smooth = candidate_smooth      ### (09/18/2017)
@@ -1436,58 +1585,63 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
          prob_accept = np.exp((sum(current_chi2) +current_smoothing_term -sum(candidate_chi2) -candidate_smoothing_term) /T)
          
          if prob_accept > random_seed[counter]:       ### accept proposed jump
-            if selected_bin >= 2*num_bins:            ### if fitting global parameter (no R-dependence) this iteration
-               accepted[num_bins+selected_bin%(2*num_bins)].append(proposed_value)
-               jump_count_by_param[num_bins+selected_bin%(2*num_bins)] += 1
+            if selected_bin >= 4*num_bins:            ### if fitting global parameter (no R-dependence) this iteration
+               accepted[num_bins+selected_bin%(4*num_bins)].append(proposed_value)
+               jump_count_by_param[num_bins+selected_bin%(4*num_bins)] += 1
             
                ### (09/15/2017) keep track of both kinds of accepts
-               accepted_worse[num_bins+selected_bin%(2*num_bins)].append(proposed_value)
+               accepted_worse[num_bins+selected_bin%(4*num_bins)].append(proposed_value)
             
             if verbose: print('  ### %.2f s since beginning, proposed jump ACCEPTED (prob_accept = %.5f), previous reduced chi2 = %.5f, candidate reduced chi2 = %.5f'%(time.time()-t0, prob_accept, current_chi2/(dim-num_bins), candidate_chi2/(dim-num_bins)))
             
             current_model[0] = new_model
             convolved_model = new_conv_model
             
-            if selected_bin == 2*num_bins:              ### if fitting V_sys this iteration
+            if selected_bin == 4*num_bins:              ### if fitting V_sys this iteration
                current_model[2] = current_model[6][6] = proposed_value
-            elif selected_bin == 2*num_bins+1:          ### if fitting phi_bar this iteration
+            elif selected_bin == 4*num_bins+1:          ### if fitting phi_bar this iteration
                current_model[3] = proposed_value
-            elif selected_bin == 2*num_bins+2:          ### if fitting inclination this iteration
+            elif selected_bin == 4*num_bins+2:          ### if fitting inclination this iteration
                current_model[4] = current_model[6][5] = proposed_value
                current_model[6][0] = proposed_param_updates[0]   ### update R_gp
                current_model[6][1] = proposed_param_updates[1]   ### update theta_gp
                current_model[6][3] = proposed_param_updates[2]   ### update bin_assign
-            elif selected_bin == 2*num_bins+3:             ### if fitting disk position angle this iteration
+            elif selected_bin == 4*num_bins+3:             ### if fitting disk position angle this iteration
                current_model[5] = current_model[6][4] = proposed_value
                current_model[6][0] = proposed_param_updates[0]   ### update R_gp
                current_model[6][1] = proposed_param_updates[1]   ### update theta_gp
                current_model[6][3] = proposed_param_updates[2]   ### update bin_assign
             else:                                     ### if fitting parameter with R-dependence this iteration
-               if selected_bin%2 == 1:
-                  current_model[1][selected_bin/2][1] = proposed_value
-                  accepted[selected_bin/2][1].append(proposed_value)
-                  jump_count_by_param[selected_bin/2][1] += 1
+               ### (09/11/2018) fitting (V_t, V_2t, V_2r) separately
+               #current_model[1][selected_bin/4][selected_bin%4] = proposed_value
+               #accepted[selected_bin/4][selected_bin%4].append(proposed_value)
+               #jump_count_by_param[selected_bin/4][selected_bin%4] += 1
+               #accepted_worse[selected_bin/4][selected_bin%4].append(proposed_value)
+
+               if selected_bin%4 == 1:
+                  current_model[1][selected_bin/4][1] = proposed_value
+                  accepted[selected_bin/4][1].append(proposed_value)
+                  jump_count_by_param[selected_bin/4][1] += 1
             
                   ### (09/15/2017) keep track of both kinds of accepts
-                  accepted_worse[selected_bin/2][1].append(proposed_value)
+                  accepted_worse[selected_bin/4][1].append(proposed_value)
                
                ### (09/19/2017) fitting (V_t, V_2t, V_2r)(r) as tuple, but keep track of them separately
                else:
-                  current_model[1][selected_bin/2][0] = proposed_V_t
-                  current_model[1][selected_bin/2][2] = proposed_V_2t
-                  current_model[1][selected_bin/2][3] = proposed_V_2r
-                  accepted[selected_bin/2][0].append(proposed_V_t)
-                  accepted[selected_bin/2][2].append(proposed_V_2t)
-                  accepted[selected_bin/2][3].append(proposed_V_2r)
-                  jump_count_by_param[selected_bin/2][0] += 1
-                  jump_count_by_param[selected_bin/2][2] += 1
-                  jump_count_by_param[selected_bin/2][3] += 1
+                  current_model[1][selected_bin/4][0] = proposed_V_t
+                  current_model[1][selected_bin/4][2] = proposed_V_2t
+                  current_model[1][selected_bin/4][3] = proposed_V_2r
+                  accepted[selected_bin/4][0].append(proposed_V_t)
+                  accepted[selected_bin/4][2].append(proposed_V_2t)
+                  accepted[selected_bin/4][3].append(proposed_V_2r)
+                  jump_count_by_param[selected_bin/4][0] += 1
+                  jump_count_by_param[selected_bin/4][2] += 1
+                  jump_count_by_param[selected_bin/4][3] += 1
 
                   ### (09/15/2017) keep track of both kinds of accepts
-                  accepted_worse[selected_bin/2][0].append(proposed_V_t)
-                  accepted_worse[selected_bin/2][2].append(proposed_V_2t)
-                  accepted_worse[selected_bin/2][3].append(proposed_V_2r)
-
+                  accepted_worse[selected_bin/4][0].append(proposed_V_t)
+                  accepted_worse[selected_bin/4][2].append(proposed_V_2t)
+                  accepted_worse[selected_bin/4][3].append(proposed_V_2r)
 
             change_in_chi2 = (candidate_chi2[0]-current_chi2[0], candidate_chi2[1]-current_chi2[1])
             current_chi2 = candidate_chi2
@@ -1515,17 +1669,20 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
             walker_tracker.write('\n')
          
          else:
-            if selected_bin >= 2*num_bins:            ### if fitting global parameter (no R-dependence) this iteration
-               rejected[num_bins+selected_bin%(2*num_bins)].append(proposed_value)
+            if selected_bin >= 4*num_bins:            ### if fitting global parameter (no R-dependence) this iteration
+               rejected[num_bins+selected_bin%(4*num_bins)].append(proposed_value)
             else:                                     ### if fitting parameter with R-dependence this iteration
-               if selected_bin%2 == 1:
-                  rejected[selected_bin/2][1].append(proposed_value)
+               ### (09/11/2018) fitting (V_t, V_2t, V_2r) separately
+               #rejected[selected_bin/4][selected_bin%4].append(proposed_value)
+
+               if selected_bin%4 == 1:
+                  rejected[selected_bin/4][1].append(proposed_value)
             
                ### (09/19/2017) fitting (V_t, V_2t, V_2r)(r) as tuple, but keep track of them separately
                else:
-                  rejected[selected_bin/2][0].append(proposed_V_t)
-                  rejected[selected_bin/2][2].append(proposed_V_2t)
-                  rejected[selected_bin/2][3].append(proposed_V_2r)
+                  rejected[selected_bin/4][0].append(proposed_V_t)
+                  rejected[selected_bin/4][2].append(proposed_V_2t)
+                  rejected[selected_bin/4][3].append(proposed_V_2r)
             
             change_in_chi2 = (np.nan, np.nan)
             if verbose: print('  ### %.2f s since beginning, proposed jump REJECTED (prob_accept = %.5f), previous reduced chi2 = %.5f, candidate reduced chi2 = %.5f'%(time.time()-t0, prob_accept, current_chi2/(dim-num_bins), candidate_chi2/(dim-num_bins)))
@@ -1535,8 +1692,8 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
          print('  walker %.0f (T = %.1f), iteration %.0f-%.0f' % (walker,T,this_iter+1,counter))
          print('    chi2 = (%.3f, %.3f), change in chi2 = (%.7f, %.7f)' % (current_chi2[0],current_chi2[1],change_in_chi2[0],change_in_chi2[1]))
          print('    (%.0f, %.0f) valid pixels, reduced chi2 = (%.8f, %.8f)' % (vel_dim,disp_dim,current_chi2[0]/(vel_dim-(n_params_vel+num_global_params)),current_chi2[1]/(disp_dim-(n_params_disp+num_global_params))))
-         print(jump_count_by_param[:num_bins//2], jump_count_by_param[num_bins//2:num_bins], jump_count_by_param[num_bins])
-         print(current_model[1][:num_bins//2], current_model[1][num_bins//2:], current_model[2])
+         print(jump_count_by_param[:num_bins//4], jump_count_by_param[num_bins//4:num_bins], jump_count_by_param[num_bins])
+         print(current_model[1][:num_bins//4], current_model[1][num_bins//4:], current_model[2])
          print('')
    
       if verbose:
@@ -1548,7 +1705,8 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
    #print('  ### ('+plateid+'-'+ifudesign+') walker %.0f, log T = %.2f, %.0f iterations, proposed jump acceptance rate: %.5f'%(walker,logT,counter,track_accept/float(track_accept+track_reject)))
 
    walker_tracker.close()
-   if walker == 0:
+   ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+   if T == 1:   #if walker == 0:
       os.system('cp '+testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=%.2f_it%04d.dat'%(logT,this_iter+1)+' '+testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=%.2f_last_iteration.dat'%(logT))
 
    fits.writeto(testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/'%(walker)+'manga_'+plateid+'_'+ifudesign+'_logT=%.2f_last_R_gp.fits'%(logT),      current_model[6][0],overwrite=True)
@@ -1581,26 +1739,60 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
    if verbose: print('')
 
    accept_rates_by_bin = open(testdir+plateid+'-'+ifudesign+'/'+component+'/acceptance_rates/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_logT=%.2f_it%04d.dat'%(logT,this_iter+1),'w')
-   accept_rates_by_bin.write('#  '+time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())+'\n')
-   accept_rates_by_bin.write('#\n')
-   accept_rates_by_bin.write('#    MaNGA plate ID:   '+plateid+' \n')
-   accept_rates_by_bin.write('#    MaNGA IFU design: '+ifudesign+' \n')
-   accept_rates_by_bin.write('#\n')
-   accept_rates_by_bin.write('#    walker %.0f \n'%(walker))
-   accept_rates_by_bin.write('#    log T = %.2f \n'%(logT))
-   accept_rates_by_bin.write('#    iteration %.0f \n'%(this_iter+1))
-   accept_rates_by_bin.write('#\n')
-   accept_rates_by_bin.write('#                      ------- accepted ------ rejected \n')
-   accept_rates_by_bin.write('#                       better   worse   total          acceptance rate      (-2sigma)    (-1sigma)     median      (+1sigma)     (+2sigma) \n')
+   accept_rates_by_bin.write('#  '+time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())+'\n'+
+                             '#\n'+
+                             '#    MaNGA plate ID:   '+plateid+'\n'+
+                             '#    MaNGA IFU design: '+ifudesign+'\n'+
+                             '#\n'+
+                             '#    component: '+component+'\n'+
+                             '#\n'+
+                             '#    walker %.0f \n' % walker +
+                             '#    log T = %.2f \n' % logT +
+                             '#    iteration %.0f \n' % (this_iter+1) +
+                             '#\n'+
+                             '#                      ------- accepted ------ rejected \n'+
+                             '#                       better   worse   total          acceptance rate      (-2sigma)    (-1sigma)        median        (+1sigma)       (+2sigma) \n')
 
    accept_rates = []
    track_accept = 0     ### track cumulative
    track_reject = 0
+   
+   accepted_models = open(testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f'%(walker)+'/manga_'+plateid+'_'+ifudesign+'_accepted_sample_logT=%.2f_it%04d.dat'%(logT,this_iter+1),'w')
+   accepted_models.write('#  '+time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())+'\n'+
+                         '#\n'+
+                         '#    MaNGA plate ID:   '+plateid+'\n'+
+                         '#    MaNGA IFU design: '+ifudesign+'\n'+
+                         '#\n'+
+                         '#    component: '+component+'\n'+
+                         '#\n'+
+                         '#    walker %.0f \n' % walker +
+                         '#    log T = %.2f \n' % logT +
+                         '#    iteration %.0f \n' % (this_iter+1) +
+                         '#\n')
+
+   for i in range(8):
+      if i < 4:
+         thisline = re.sub(',', ' ', str(np.round(accepted[num_bins+i],5).tolist())[1:-1])
+         if   i == 0: accepted_models.write('  V_sys  (km/s)  ' + thisline + '\n')
+         elif i == 1: accepted_models.write('  phi_b  (rad)   ' + thisline + '\n')
+         elif i == 2: accepted_models.write('    inc  (rad)   ' + thisline + '\n')
+         elif i == 3: accepted_models.write('     PA  (rad)   ' + thisline + '\n')
+      else:
+         for j in range(num_bins):
+            thisline = re.sub(',', ' ', str(np.round(accepted[j][i%4],3).tolist())[1:-1])
+            if   i == 4: accepted_models.write('    V_t[%.0f]  (km/s)  ' % j + thisline + '\n')
+            elif i == 5: accepted_models.write('sigma_V[%.0f]  (km/s)  ' % j + thisline + '\n')
+            elif i == 6: accepted_models.write('   V_2t[%.0f]  (km/s)  ' % j + thisline + '\n')
+            elif i == 7: accepted_models.write('   V_2r[%.0f]  (km/s)  ' % j + thisline + '\n')
+
+   accepted_models.close()
 
    ### (09/20/2017) still 4*num_bins despite above changes because four parameters with radial dependence are tracked in separate arrays
    for b in range(num_radial_params*num_bins+4):   ### (10/03/2017)
       
-      if walker == 0:  ### (01/25/2018)
+      '''
+      ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+      if T == 1:   #if walker == 0:  ### (01/25/2018)
          if b == num_radial_params*num_bins:              ### V_sys
             accepted_models = open(testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f'%(walker)+'/V_sys/manga_'+plateid+'_'+ifudesign+'_V_sys_accepted_models_logT=%.2f_it%04d.dat'%(logT,this_iter+1),'w')
             accepted_models.write('#  V_sys (km/s)     \n')
@@ -1638,11 +1830,19 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
          accepted_models.write('#    walker %.0f \n'%(walker))
          accepted_models.write('#    log T = %.2f \n'%(logT))
          accepted_models.write('#\n')
+         
+      '''
 
       if b >= num_radial_params*num_bins:
-         if walker == 0:  ### (01/25/2018)
+         
+         '''
+         ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+         if T == 1:   #if walker == 0:  ### (01/25/2018)
             for i in range(len(accepted[num_bins+b%num_bins])):
                accepted_models.write(' '+'%8s'%'%.5f'%(accepted[num_bins+b%num_bins][i])+'\n')
+               
+         '''
+         
          this_bin_accepted = len(accepted[num_bins+b%num_bins])
          this_bin_rejected = len(rejected[num_bins+b%num_bins])
 
@@ -1651,9 +1851,15 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
          this_bin_accepted_worse  = len(accepted_worse[num_bins+b%num_bins])
 
       else:
-         if walker == 0:  ### (01/25/2018)
+          
+         '''
+         ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+         if T == 1:   #if walker == 0:  ### (01/25/2018)
             for i in range(len(accepted[b/4][b%4])):
                accepted_models.write(' '+'%8s'%'%.3f'%(accepted[b/4][b%4][i])+'\n')
+         
+         '''
+         
          this_bin_accepted = len(accepted[b/4][b%4])
          this_bin_rejected = len(rejected[b/4][b%4])
 
@@ -1721,14 +1927,18 @@ def mcmcFit(plateid, ifudesign, component, data, ivar, model, psf, flux, conv_no
                   
       accept_rates_by_bin.write('\n')
       
-      if walker == 0:  ### (01/25/2018)
+      '''
+      ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+      if T == 1:   #if walker == 0:  ### (01/25/2018)
          accepted_models.close()
+         
+      '''
 
    accept_rates_by_bin.write('#\n')
    accept_rates_by_bin.close()
    tt1 = time.time()-t1
 
-   print('  ### ('+plateid+'-'+ifudesign+') walker %.0f, log T = %.2f, %.0f iterations, proposed jump acceptance rate: %.5f, time required: %.0f hours, %.0f minutes, %.0f seconds'%(walker,logT,counter,track_accept/float(track_accept+track_reject),(int(tt1)/3600),(int(tt1%3600)/60),(tt1%60)))
+   print('  ### ('+plateid+'-'+ifudesign+', '+component+') walker %.0f, log T = %.2f, %.0f iterations, proposed jump acceptance rate: %.5f, time required: %.0f hours, %.0f minutes, %.0f seconds'%(walker,logT,counter,track_accept/float(track_accept+track_reject),(int(tt1)/3600),(int(tt1%3600)/60),(tt1%60)))
 
    output.put([walker, current_model, accept_rates]) #, new_ranges])
 
@@ -1756,19 +1966,24 @@ def run(plateid, ifudesign, component, verbose=False, gauss=False):
          os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/acceptance_rates/walker%.0f/'%(i))
          os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/tracker/walker%.0f/'%(i))
          os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/'%(i))
-         if i == 0:
-            os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/V_t/'%(i))
-            os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/sigma_V/'%(i))
-            os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/V_2t/'%(i))
-            os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/V_2r/'%(i))
-            os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/V_sys/'%(i))
-            os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/phi_bar/'%(i))
-            os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/incl/'%(i))
-            os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/PA/'%(i))
+         ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+         #if i == 0 or last_iter > 59:
+         ### (09/08/2018) all chains to sample untempered distributions beginning at iteration 21
+         '''
+         os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/V_t/'%(i))
+         os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/sigma_V/'%(i))
+         os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/V_2t/'%(i))
+         os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/V_2r/'%(i))
+         os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/V_sys/'%(i))
+         os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/phi_bar/'%(i))
+         os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/incl/'%(i))
+         os.system('mkdir '+testdir+plateid+'-'+ifudesign+'/'+component+'/sample/walker%.0f/PA/'%(i))
+         
+         '''
    finally: pass
 
    t0 = time.time()
-   ptRuns(plateid, ifudesign, component, iterations, last_iter, verbose)
+   ptRuns(plateid, ifudesign, component, temp_ladder, iterations, last_iter, verbose)
 
    #os.system('cp -p '+testdir+plateid+'-'+ifudesign+'/'+component+'/.manga_'+plateid+'_'+ifudesign+'_'+component+'_last_iter ' +testdir+plateid+'-'+ifudesign+'/'+component+'/.manga_'+plateid+'_'+ifudesign+'_'+component+'_last_before_switch')
 
@@ -1776,11 +1991,14 @@ def run(plateid, ifudesign, component, verbose=False, gauss=False):
    print('')
    print('  ### time elapsed ('+component+', MCMC): %.0f hours, %.0f minutes, %.0f seconds' % ((int(tt0)/3600),(int(tt0%3600)/60),((tt0%60))))
 
-   import chi2_track
-   chi2_track.track_chi2(plateid, ifudesign, component)
+   #import chi2_track
+   #chi2_track.track_chi2(plateid, ifudesign, component)
 
-   import npp
-   npp.make(plateid, ifudesign, component)
+   #import npp
+   #npp.make(plateid, ifudesign, component)
+
+   import rhat
+   rhat.make_rhat_table(plateid, ifudesign, component, last_swap_iteration, num_chains, num_bins)
 
    tt0 = time.time()-t0-tt0
    print('')
@@ -1808,7 +2026,8 @@ def do_galaxy(plateid, ifudesign, verbose=False):
    output = manager.Queue()
    proc = []
    for component in ('stellar', 'Ha-6564'):
-      if last_iter is not None:
+      ### (09/05/2018) all chains to sample untempered distributions beginning at iteration 61
+      if last_iter is not None and type(last_iter) is not int:
          iter_file = open(testdir+plateid+'-'+ifudesign+'/'+component+'/.manga_'+plateid+'_'+ifudesign+'_'+component+'_last_iter','r')
          last_iter = int(iter_file.readlines()[-1])
          iter_file.close()
@@ -1816,6 +2035,11 @@ def do_galaxy(plateid, ifudesign, verbose=False):
       proc.append(p)
       p.start()
 
+   for p in proc: p.join()
+
+   #os.chdir(testdir+'..')
+   #os.system('time python rhat.py '+plateid+'-'+ifudesign+' %.0f %.0f' % (last_swap_iteration,num_chains))
+   
 
 if __name__ == '__main__':
    
@@ -1829,39 +2053,45 @@ if __name__ == '__main__':
    
    if   num_chains == 2:  temp_ladder = np.logspace(0,0.2,num_chains).tolist()
    elif num_chains == 4:  temp_ladder = np.logspace(0,0.3,num_chains).tolist()
-   elif num_chains == 5:  temp_ladder = np.logspace(0,0.4,num_chains).tolist()
+   #elif num_chains == 5:  temp_ladder = np.logspace(0,0.4,num_chains).tolist()
+   elif num_chains == 5:  temp_ladder = np.logspace(0,0.6,num_chains).tolist()
    elif num_chains == 10: temp_ladder = np.logspace(0,0.9,num_chains).tolist()
+   #elif num_chains == 10: temp_ladder = np.logspace(0,1.8,num_chains).tolist()
    elif num_chains == 20: temp_ladder = np.logspace(0,0.95,num_chains).tolist()
    else: print('   no temperature ladder specified   ')
    
-   sigma_V_t    = 0.3
-   sigma_V_2t   = 0.2
-   sigma_V_2r   = 0.2
-   sigma_disp   = 0.5
-   
-   sigma_Vsys   = 0.1
-   sigma_phiBar = 0.1  * np.pi/180
-   sigma_inc    = 0.05 * np.pi/180
-   sigma_PA     = 0.1  * np.pi/180
+   sigma_V_t    = 1.   #0.1   #0.5   #0.3
+   sigma_disp   = 1.   #0.1   #1.    #0.5
+   sigma_V_2t   = 1.   #0.1   #0.5   #0.2
+   sigma_V_2r   = 1.   #0.1   #0.5   #0.2
 
-   sigma_phiBar = round(sigma_phiBar, 4)
-   sigma_inc    = round(sigma_inc, 4)
-   sigma_PA     = round(sigma_PA, 4)
+   sigma_Vsys   = 0.5  #0.1   #0.2   #0.1
+   sigma_phiBar = 0.5  #0.01  #0.3   #0.1
+   sigma_inc    = 0.5  #0.01  #0.2   #0.05
+   sigma_PA     = 0.5  #0.01  #0.3   #0.1
+
+   sigma_phiBar = round(sigma_phiBar * np.pi/180, 4)
+   sigma_inc    = round(sigma_inc    * np.pi/180, 4)
+   sigma_PA     = round(sigma_PA     * np.pi/180, 4)
 
    gauss, verbose = 0, 0
 
-   swap = True
+   #swap = True
    
-   if swap:
-      swap_int = 1e30         ### minimum number of accepted jumps in each bin to advance to swap ahead of max_int
-      iterations = 130        ### [deprecated] before allowing PA of m=2 mode to take on radial dependence, i.e., phi_b -> phi_b(R)
-      max_int = 10000         ### maximum number of proposed jumps between swaps
+   #if swap:
+   #swap_int = 1e30         ### minimum number of accepted jumps in each bin to advance to swap ahead of max_int
+   #iterations = 130        ### [deprecated] before allowing PA of m=2 mode to take on radial dependence, i.e., phi_b -> phi_b(R)
+   #iterations = 250        ### (09/10/2018) continuation test
    
-   else:
-      ### (08/03/2017) four cold chains, no swaps; this interval is for writing out data, essentially
-      swap_int = 150
-      iterations = 250
-      max_int = 100000
+   last_swap_iteration = 20
+   iterations = 120  #150
+   max_int = 10000         ### maximum number of proposed jumps between swaps
+   
+   #else:
+   #   ### (08/03/2017) four cold chains, no swaps; this interval is for writing out data, essentially
+   #   swap_int = 150
+   #   iterations = 250
+   #   max_int = 100000
 
    num_radial_params = 4
    num_global_params = 4
